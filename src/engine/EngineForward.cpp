@@ -471,6 +471,12 @@ void forward_3dgs(
 }
 
 
+bool engine_set_background_enabled(bool on) {
+    const bool was = engine().background.enabled;
+    engine().background.enabled = on;
+    return was;
+}
+
 void engine_debug_forward(
     TorchTensorView override_features_dc,
     int override_sh_degree,

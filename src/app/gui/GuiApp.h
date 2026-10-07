@@ -617,6 +617,7 @@ private:
     void draw_preset_delete_modal();
     void draw_basic_options();
     void draw_train_controls();
+    void draw_capture_panel();
     void draw_metrics();
     void draw_status_strip();
     // Right-aligned VRAM readout on the status strip; x0/avail describe the
@@ -757,6 +758,8 @@ private:
     bool _keep_full_ckpt = false;
     ScreenshotSettings _shot;
     std::vector<std::future<std::string>> _shot_jobs;   // path written, or throws
+    CaptureSettings _capture;
+    std::string _capture_filter;
 
     // Saved presets, one picker per kind.
     PresetPicker<TrainPreset> _train_presets;

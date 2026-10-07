@@ -14,6 +14,7 @@
 //    RenderWorker attach.
 
 #include "app/TrainerCore.h"
+#include "app/gui/TrainCapture.h"
 #include "app/webviewer/Viewer.h"
 
 #include <atomic>
@@ -56,6 +57,9 @@ public:
     // dataparser option changes apply). Replaces the session -- the caller
     // must detach viewers from the previous one first.
     void start_training(const TrainConfig& cfg, const std::string& preset);
+
+    // Image-sequence capture for the next start_training().
+    void set_capture(const CaptureSettings& cs) { _capture_cfg = cs; }
 
     void set_paused(bool p);
     bool paused() const;
@@ -118,6 +122,8 @@ private:
 
     std::unique_ptr<spirula::TrainerSession> _session;
     std::unique_ptr<ViewerServer> _web_viewer;
+    CaptureSettings _capture_cfg;
+    TrainCapture _capture;
     std::thread _worker;
     std::atomic<Phase> _phase{Phase::Idle};
     std::atomic<bool> _engine_ready{false};

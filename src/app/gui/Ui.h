@@ -463,6 +463,9 @@ inline bool BeginTabItem(const Msg& m, ImGuiTabItemFlags flags = 0) {
 inline bool CollapsingHeader(const Msg& m, ImGuiTreeNodeFlags flags = 0) {
     return ImGui::CollapsingHeader(detail::label(m), flags);
 }
+inline bool CollapsingHeaderRaw(const char* id, ImGuiTreeNodeFlags flags = 0) {
+    return ImGui::CollapsingHeader(id, flags);
+}
 inline bool TreeNode(const Msg& m) { return ImGui::TreeNode(detail::label(m)); }
 inline bool TreeNode(const Msg& m, std::initializer_list<Arg> a) {
     return ImGui::TreeNode(detail::label(format(m, a), m));

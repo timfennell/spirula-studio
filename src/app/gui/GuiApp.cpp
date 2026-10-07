@@ -439,6 +439,7 @@ void GuiApp::load_settings() {
         // default, which is ON: the files are what makes a run resumable.
         else if (k == "keep_intermediate") _sfm_job.keep_intermediate = v != "0";
         else if (k == "save_full_checkpoint") _keep_full_ckpt = v != "0";
+        else if (k.rfind("capture_", 0) == 0) read_capture_setting(_capture, k, v);
         else if (k.rfind(kDirPrefix, 0) == 0 && !v.empty())
             _dialog_dirs[k.substr(sizeof kDirPrefix - 1)] = v;
         else if (read_screenshot_setting(_shot, k, v)) {}
@@ -488,6 +489,7 @@ void GuiApp::save_settings() {
     std::fprintf(f, "native_dialogs=%d\n", _dialog.native_enabled() ? 1 : 0);
     std::fprintf(f, "keep_intermediate=%d\n", _sfm_job.keep_intermediate ? 1 : 0);
     std::fprintf(f, "save_full_checkpoint=%d\n", _keep_full_ckpt ? 1 : 0);
+    write_capture_settings(f, _capture);
     for (const auto& [key, dir] : _dialog_dirs)
         std::fprintf(f, "%s%s=%s\n", kDirPrefix, key.c_str(), dir.c_str());
     write_screenshot_settings(f, _shot);
@@ -1385,6 +1387,8 @@ void GuiApp::launch_training(const TrainConfig& cfg, const std::string& preset) 
     open_run_log(_train_log, data_dir, "train", run_log_stamp());
     set_ss_env("UNREG_LOG", "");
     write_run_settings(_train_log);
+    _capture.ffmpeg = _ffmpeg_exe.empty() ? std::string("ffmpeg") : _ffmpeg_exe;
+    _runner.set_capture(_capture);
     _runner.start_training(cfg, preset);
 }
 
@@ -10445,6 +10449,8 @@ void GuiApp::draw_train_settings() {
         }
         if (!parse_settings_equal(parse_before, _cfg)) _parse_dirty = true;
     }
+
+    draw_capture_panel();
 
     // ---- controls + metrics ----
     ui::SeparatorText(msg::section_training);

@@ -296,6 +296,9 @@ void engine_background_optim_step(int step, const BackgroundStepConfig& cfg);
 // (..., H, W, 3) float buffer: SH gives the last forward's skybox, Color and
 // the randomized modes a flat fill. 0 when no background is active.
 int engine_copy_background_to_host(TorchTensorView out_image);
+// Turns the background blend on or off for the forwards that follow and returns
+// whether it was on: side renders (training capture) want the bare splats.
+bool engine_set_background_enabled(bool on);
 
 // --- Linear / wide-gamut color space ---
 //

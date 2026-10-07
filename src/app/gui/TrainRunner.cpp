@@ -170,12 +170,14 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
                     {(long long)s->cfg.viewer_port}));
             }
 
+            _capture.begin(*s, _capture_cfg, s->start_step, s->cfg.num_iterations);
             _phase = Phase::Training;
             spirula::TrainerCallbacks cb;
             cb.on_data_error = [this](const std::string& what) {
                 return await_data_decision(what);
             };
-            cb.on_step = [this](const spirula::TrainerProgress& p) {
+            cb.on_step = [this, s](const spirula::TrainerProgress& p) {
+                _capture.on_step(*s, p.step);
                 std::lock_guard<std::mutex> lk(_mu);
                 _latest = p;
                 _latencies.push_back(p.step_latency);
@@ -193,6 +195,7 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
                 _metrics.push_back(m);
             };
             s->train(cb);
+            _capture.finish();
             if (!s->stop_requested.load() && s->cfg.eval_mode != "all") {
                 _phase = Phase::Evaluating;
                 s->eval([this](const spirula::EvalProgress& p) {
@@ -202,6 +205,7 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
             }
             _phase = Phase::Done;
         } catch (const std::exception& e) {
+            _capture.finish();
             std::lock_guard<std::mutex> lk(_mu);
             _error = e.what();
             _phase = Phase::TrainError;
