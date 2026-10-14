@@ -22,6 +22,7 @@
 #include "data/ScenePartition.h"
 #include "data/Json.h"
 #include "data/RegionProgram.h"
+#include "data/RegionRaycast.h"
 #include "data/RoiDocument.h"
 #include "data/LabelField.h"
 #include "dense/Artifact.h"
@@ -36,6 +37,9 @@
 
 #include <algorithm>
 #include <climits>
+#include <array>
+#include <map>
+#include <memory>
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
@@ -819,6 +823,7 @@ void TrainerSession::load_region() {
 void TrainerSession::setup_region() {
     if (!roi) {
         engine_set_region({}, {}, {}, {}, {}, {}, 1.0f);
+        engine_set_void_stop_provider({});
         return;
     }
     // The region is in the dataset's frame, the splats in the training frame.
@@ -845,6 +850,81 @@ void TrainerSession::setup_region() {
                       tv(prog.field ? prog.field->seeds : none), tv(cams.nodes), tv(cams.seeds),
                       tv(pattern), cfg.roi_outside_weight, cfg.roi_outside_opacity_decay);
     log(lfmt(lmsg::region_applied, {prog.num_nodes(), cfg.roi_outside_weight}));
+    setup_void_stop();
+}
+
+// SS_VOID_STOP_DUMP=<dir>: each cast map as a PGM (white = the ray enters a
+// void) plus the camera it was cast for, to check the voids against photos.
+static void dump_void_map(const std::vector<float>& m, int w, int h, const VoidRayCamera& cam,
+                          size_t n) {
+    const char* dir = spirula::env("VOID_STOP_DUMP");
+    if (!dir || !*dir) return;
+    const std::string base = std::string(dir) + "/void_" + std::to_string(n);
+    if (FILE* f = std::fopen((base + ".pgm").c_str(), "wb")) {
+        std::fprintf(f, "P5 %d %d 255\n", w, h);
+        for (float z : m) std::fputc(std::isfinite(z) ? 255 : 0, f);
+        std::fclose(f);
+    }
+    if (FILE* f = std::fopen((base + ".txt").c_str(), "w")) {
+        for (float v : cam.viewmat) std::fprintf(f, "%.9g ", v);
+        std::fprintf(f, "\n%.9g %.9g %.9g %.9g %d %d\n", cam.intrin[0], cam.intrin[1],
+                     cam.intrin[2], cam.intrin[3], cam.width, cam.height);
+        std::fclose(f);
+    }
+}
+
+// Voids block light: each training forward asks where its rays enter the
+// region's voids. A camera's map is cast once and kept, keyed by its pose.
+void TrainerSession::setup_void_stop() {
+    engine_set_void_stop_provider({});
+    if (!roi || !cfg.roi_void_stop) return;
+    std::string why;
+#ifndef SS_BACKEND_VULKAN
+    why = "needs the Vulkan backend";
+#endif
+    if (why.empty() && cfg.primitive != "3dgs" && cfg.primitive != "mip")
+        why = "needs the 3dgs or mip primitive";
+    if (why.empty() && region_void_bounds(*roi).unbounded())
+        why = "the region has no closed voids";
+    if (!why.empty()) {
+        log(lfmt(lmsg::void_stop_unsupported, {why}));
+        return;
+    }
+    const double rs = cfg.relative_scale.value_or(1.0f);
+    const std::array<double, 3> center = {ds.center[0], ds.center[1], ds.center[2]};
+    auto cache = std::make_shared<std::map<std::string, std::vector<float>>>();
+    std::shared_ptr<const Region> region = roi;
+    engine_set_void_stop_provider([region, rs, center, cache](const VoidStopCameras& c,
+                                                              std::vector<float>& map,
+                                                              int& mw, int& mh) {
+        if (c.model != "PINHOLE") return false;
+        constexpr int kLong = 512;
+        const double sc = (double)kLong / std::max(c.width, c.height);
+        mw = std::max(1, (int)std::lround(c.width * sc));
+        mh = std::max(1, (int)std::lround(c.height * sc));
+        const size_t per = (size_t)mw * mh;
+        map.resize(per * c.num);
+        for (int i = 0; i < c.num; i++) {
+            VoidRayCamera cam;
+            std::copy(c.viewmats + i * 16, c.viewmats + i * 16 + 16, cam.viewmat);
+            std::copy(c.intrins + i * 4, c.intrins + i * 4 + 4, cam.intrin);
+            std::copy(c.dist_coeffs + i * 8, c.dist_coeffs + i * 8 + 8, cam.dist);
+            cam.distortion = c.distortion == "OPENCV" ? 1 : c.distortion == "THIN_PRISM" ? 2 : 0;
+            cam.width = c.width;
+            cam.height = c.height;
+            std::string key((const char*)&cam, sizeof cam);
+            auto it = cache->find(key);
+            if (it == cache->end()) {
+                std::vector<float> m(per);
+                region_void_depth_map(*region, rs, center.data(), cam, mw, mh, m.data());
+                dump_void_map(m, mw, mh, cam, cache->size());
+                it = cache->emplace(std::move(key), std::move(m)).first;
+            }
+            std::copy(it->second.begin(), it->second.end(), map.begin() + per * i);
+        }
+        return true;
+    });
+    log(lmsg::void_stop_on.get());
 }
 
 // Unported-feature guards: fail early rather than ignore a flag.

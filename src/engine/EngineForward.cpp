@@ -6,6 +6,7 @@
 #include "engine/EngineState.h"
 
 #include "core/Env.h"
+#include "backend/api/VoidStop.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -414,6 +415,12 @@ void forward_3dgs(
     DeviceTensor3D<int32_t> last_ids;
     DeviceTensor3D<float> render_median;
 
+    // Voids block light: armed by a training step for this forward only.
+    if (engine().fwd.void_w > 0)
+        backend::void_stop() = {(uint64_t)engine().fwd.void_depth.data_ptr(),
+                                engine().fwd.void_w, engine().fwd.void_h};
+    engine().fwd.void_w = engine().fwd.void_h = 0;
+
     if (primitive == "3dgs") {
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgs_fwd(
             engine().cur_num_splats,
@@ -443,6 +450,8 @@ void forward_3dgs(
             dist_type, output_median, output_depth);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     }
+
+    backend::void_stop() = {};
 
     engine().fwd.renders = renders;
     engine().fwd.rgb_fmt = PixelFormat::F32;

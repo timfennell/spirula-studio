@@ -139,6 +139,51 @@ void _engine_step_image_stages(TorchTensorView cam_indices) {
 // No optimizer / densify. Used both as a per-sub-batch step in split mode
 // and as the inner of the single-batch path. Returns the loss_dict from
 // engine_compute_loss_backward; callers aggregate across sub-batches.
+static VoidStopProvider& _void_stop_provider() {
+    static VoidStopProvider p;
+    return p;
+}
+
+void engine_set_void_stop_provider(VoidStopProvider provider) {
+    _void_stop_provider() = std::move(provider);
+}
+
+// Asks the provider for this batch's void depths and uploads them; forward_3dgs
+// hands them to the raster and clears them, so only this forward stops rays.
+static void _prepare_void_stop() {
+    auto& fwd = engine().fwd;
+    fwd.void_w = fwd.void_h = 0;
+    const VoidStopProvider& prov = _void_stop_provider();
+    const CameraTable& cam = engine().camera;
+    if (!prov || cam.num <= 0) return;
+    const size_t n = (size_t)cam.num;
+    std::vector<float> vm(n * 16), in(n * 4), dc(n * 8, 0.0f);
+    backend::memcpy_sync(vm.data(), cam.viewmats.data_ptr(), vm.size() * sizeof(float),
+                         backend::MemcpyKind::DeviceToHost);
+    backend::memcpy_sync(in.data(), cam.intrins.data_ptr(), in.size() * sizeof(float),
+                         backend::MemcpyKind::DeviceToHost);
+    if (cam.dist_coeffs.data_ptr() && cam.dist_coeffs.numel() >= (int64_t)dc.size())
+        backend::memcpy_sync(dc.data(), cam.dist_coeffs.data_ptr(), dc.size() * sizeof(float),
+                             backend::MemcpyKind::DeviceToHost);
+    VoidStopCameras c;
+    c.num = cam.num;
+    c.width = cam.width;
+    c.height = cam.height;
+    c.model = cam.model_str;
+    c.distortion = cam.distortion_str;
+    c.viewmats = vm.data();
+    c.intrins = in.data();
+    c.dist_coeffs = dc.data();
+    std::vector<float> map;
+    int mw = 0, mh = 0;
+    if (!prov(c, map, mw, mh) || mw <= 0 || mh <= 0 || map.size() != n * mw * mh) return;
+    fwd.void_depth.resize(PoolSlot::RenderVoidDepth, (int64_t)map.size());
+    backend::memcpy_sync(fwd.void_depth.data_ptr(), map.data(), map.size() * sizeof(float),
+                         backend::MemcpyKind::HostToDevice);
+    fwd.void_w = (uint32_t)mw;
+    fwd.void_h = (uint32_t)mh;
+}
+
 static std::map<std::string, float> _engine_step_fwd_bwd_only(
     int step,
     std::string primitive,
@@ -218,6 +263,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
 
     {
         SplatStageTimer stage_timer;
+        _prepare_void_stop();
         forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false, (int)dist_type);
     }
     _engine_step_image_stages(bilagrid_cam_indices);

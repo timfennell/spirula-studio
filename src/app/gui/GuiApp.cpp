@@ -353,6 +353,7 @@ void GuiApp::shutdown() {
     _geometry_panel.destroy_gl();
     _partition_panel.destroy_gl();
     _roi_editor.destroy_gl();
+    _void_editor.destroy_gl();
     if (_merge_thread.joinable()) _merge_thread.join();
     _colmap.cancel();
     _sfm.cancel();
@@ -3323,6 +3324,7 @@ void GuiApp::frame() {
                                    me && me->text_prompts && me->kind == MaskModelKind::Sam);
         _mask_editor.draw();
     }
+    _void_editor.draw();
     // After every screen and the editor, so either can raise the one consent modal.
     draw_license_modal();
 
@@ -10450,6 +10452,7 @@ void GuiApp::draw_train_settings() {
         if (!parse_settings_equal(parse_before, _cfg)) _parse_dirty = true;
     }
 
+    draw_keep_out_panel();
     draw_capture_panel();
 
     // ---- controls + metrics ----

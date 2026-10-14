@@ -42,6 +42,9 @@ const int kOutputMedian = 0;
 // never sits behind a runtime branch (see backend README).
 [SpecializationConstant]
 const int kRasterPacked = 0;
+// Voids block light (2D entry only): void_depth is read only when this is 1.
+[SpecializationConstant]
+const int kVoidStop = 0;
 
 groupshared uint _hit[TILE_AREA];
 groupshared uint _done_count;
@@ -76,6 +79,7 @@ struct RasterFwd2dParams {
     float* dist_rgb;     // [I,H,W,3], kDistType == 2 only
     float* dist_depth;   // [I,H,W],   kDistType != 0 only
     float* out_median;   // [I,H,W],   kOutputMedian only
+    float* void_depth;   // [I,void_h,void_w], kVoidStop only
     uint32_t I;
     uint32_t n_isects;
     uint32_t width;
@@ -84,6 +88,8 @@ struct RasterFwd2dParams {
     uint32_t tile_height;
     uint32_t macro_log2;
     uint32_t out_depth_on;  // 0: nothing reads the depth, out_depth unbound
+    uint32_t void_w;
+    uint32_t void_h;
 };
 
 [shader("compute")]
@@ -115,6 +121,15 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float median_depth = 0.0f;
     float median_prev_z = 0.0f;
     float median_prev_T = 1.0f;
+
+    // Voids block light: the ray ends where it enters a void, so splats
+    // behind it (the far wall) cannot cover for a see-through near wall.
+    float void_z = 3.0e38f;
+    if (kVoidStop != 0 && inside) {
+        uint vx = min(j * p.void_w / p.width, p.void_w - 1);
+        uint vy = min(i * p.void_h / p.height, p.void_h - 1);
+        void_z = p.void_depth[(image_id * p.void_h + vy) * p.void_w + vx];
+    }
 
     // C = sum_j w_j c_j (raw) and S = sum_j w_j c_j^2 (RGB_D channels)
     float3 pix_rgb = float3(0.0f);
@@ -190,6 +205,11 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             if (done)
                 continue;
             Frag2d f = _batch_2d[t];
+            if (kVoidStop != 0 && f.depth >= void_z) {
+                done = true;
+                InterlockedAdd(_done_count, 1);
+                continue;
+            }
 
             // FragmentFwd::evaluate_alpha(px, py)
             float2 delta = float2(f.xy.x - px, f.xy.y - py);

@@ -7,6 +7,7 @@
 #include "backend/api/BackendRuntime.h"
 #include "config/TrainConfig.h"
 #include "app/gui/BatchProcess.h"
+#include "app/gui/VoidEditor.h"
 #include "app/gui/ColmapRunner.h"
 #include "app/gui/CommandRunner.h"
 #include "app/gui/CompareView.h"
@@ -618,6 +619,8 @@ private:
     void draw_basic_options();
     void draw_train_controls();
     void draw_capture_panel();
+    void draw_keep_out_panel();
+    std::string apply_keep_out_now(const std::string& region_file);
     void draw_metrics();
     void draw_status_strip();
     // Right-aligned VRAM readout on the status strip; x0/avail describe the
@@ -760,6 +763,10 @@ private:
     std::vector<std::future<std::string>> _shot_jobs;   // path written, or throws
     CaptureSettings _capture;
     std::string _capture_filter;
+    std::string _keepout_note;
+    VoidEditor _void_editor;
+    std::string _keepout_file;
+    bool _keepout_block_light = true;   // voids also stop camera rays
 
     // Saved presets, one picker per kind.
     PresetPicker<TrainPreset> _train_presets;

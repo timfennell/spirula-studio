@@ -377,6 +377,8 @@ std::vector<std::string> list_roi_files(const std::string& dataset_dir) {
     std::error_code ec;
     for (const fs::directory_entry& e : fs::directory_iterator(roi_folder(dataset_dir), ec)) {
         if (!e.is_regular_file(ec)) continue;
+        // macOS writes "._name" AppleDouble files beside everything on a non-Mac volume.
+        if (e.path().filename().string().rfind('.', 0) == 0) continue;
         std::string ext = e.path().extension().string();
         for (char& c : ext) c = (char)std::tolower((unsigned char)c);
         if (ext == ".json") out.push_back(e.path().lexically_normal().string());
