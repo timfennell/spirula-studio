@@ -8,6 +8,7 @@
 #include <kernels/raster/RasterizationFwd.cuh>
 #include <kernels/raster/RasterizationEval3DFwd.cuh>
 
+#include "backend/api/VoidStop.h"
 #include "backend/vulkan/kernels/KernelCommon.h"
 
 namespace {
@@ -17,11 +18,12 @@ struct RasterFwd2dParams {
     uint64_t s_screen;
     uint64_t tile_offsets, flatten_ids;
     uint64_t out_rgb, out_depth, out_T, out_last_ids;
-    uint64_t dist_rgb, dist_depth, out_median;
+    uint64_t dist_rgb, dist_depth, out_median, void_depth;
     uint32_t I, n_isects, width, height, tile_width, tile_height, macro_log2;
     uint32_t out_depth_on;
+    uint32_t void_w, void_h;
 };
-static_assert(sizeof(RasterFwd2dParams) == 10 * 8 + 8 * 4,
+static_assert(sizeof(RasterFwd2dParams) == 11 * 8 + 10 * 4,
               "params layout must match the slang struct");
 
 // Mirrors RasterFwd3dgutParams in shaders/rasterize_fwd.slang.
@@ -140,6 +142,13 @@ launch_raster_2d_fwd(
     p.dist_rgb = (uint64_t)std::get<0>(o.distortions).data_ptr();
     p.dist_depth = (uint64_t)std::get<1>(o.distortions).data_ptr();
     p.out_median = (uint64_t)o.render_median.data_ptr();
+    // One shot: the stop applies to this forward only.
+    const backend::VoidStop vs = backend::void_stop();
+    backend::void_stop() = {};
+    const bool void_stop = vs.depth != 0 && vs.width > 0 && vs.height > 0;
+    p.void_depth = void_stop ? vs.depth : vkk::or_fallback(uint64_t{0});
+    p.void_w = void_stop ? vs.width : 0;
+    p.void_h = void_stop ? vs.height : 0;
     p.I = (uint32_t)batch;
     p.n_isects = (uint32_t)flatten_ids.size();
     p.width = image_width;
@@ -148,8 +157,11 @@ launch_raster_2d_fwd(
     p.tile_height = tile_height;
     p.macro_log2 = (uint32_t)macro_log2;
 
+    // Spec IDs: 0 = camera model, 1 = dist type, 2 = median,
+    // 3 = kRasterPacked, 4 = kVoidStop.
     backend::vk::SpecList spec{0u, dist_spec(dist_type),
-                               output_median ? 1u : 0u};
+                               output_median ? 1u : 0u, 0u,
+                               void_stop ? 1u : 0u};
     static_assert(sizeof(RasterFwd2dParams) <= 128,
                   "must stay under the push-constant floor");
     dispatch_raster_push("rasterize_fwd.rasterize_fwd_2d", spec,
@@ -293,10 +305,15 @@ std::tuple<
     p.macro_log2 = (uint32_t)macro_log2;
 
     // Spec IDs: 0 = camera model, 1 = dist type, 2 = median,
-    // 3 = kRasterPacked (gaussian_ids present), 4 = distortion tier.
+    // 3 = kRasterPacked (gaussian_ids present), 4 = kVoidStop (2D only),
+    // 5 = distortion tier.
+    backend::VoidStop& vs = backend::void_stop();
+    if (vs.depth != 0)
+        throw std::runtime_error(
+            "Voids block light needs a 2D primitive (3dgs or mip), not 3dgut.");
     backend::vk::SpecList spec{cd.cam, dist_spec(dist_type),
                                output_median ? 1u : 0u,
-                               gaussian_ids.data_ptr() ? 1u : 0u, cd.dist};
+                               gaussian_ids.data_ptr() ? 1u : 0u, 0u, cd.dist};
     dispatch_raster("rasterize_fwd.rasterize_fwd_3dgut", spec,
                     (uint32_t)batch, tile_width, tile_height, macro_log2,
                     vkk::raster_work(p.n_isects, macro_log2, batch,

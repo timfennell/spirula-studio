@@ -2,6 +2,10 @@
 
 #include "core/Tensor.h"
 
+#include <functional>
+#include <string>
+#include <vector>
+
 #include "kernels/tile/IntersectTile.cuh"
 #include "kernels/background/BackgroundSphericalHarmonics.cuh"
 #include "kernels/loss/PerSplatLoss.cuh"
@@ -66,6 +70,20 @@ void engine_set_region(TorchTensorView program, TorchTensorView field_bvh,
                        TorchTensorView field_seeds, TorchTensorView camera_bvh,
                        TorchTensorView camera_seeds, TorchTensorView pattern,
                        float outside_weight, float outside_opacity_decay = 1.0f);
+
+// "Voids block light": before each training forward the provider gets the
+// batch's cameras (host copies) and fills a [num, map_h, map_w] map of camera
+// depths where rays enter a void; false skips the stop. Empty = off.
+struct VoidStopCameras {
+    int num = 0, width = 0, height = 0;
+    std::string model, distortion;
+    const float* viewmats = nullptr;      // [num, 16] world-to-camera rows
+    const float* intrins = nullptr;       // [num, 4] fx fy cx cy
+    const float* dist_coeffs = nullptr;   // [num, 8]
+};
+using VoidStopProvider =
+    std::function<bool(const VoidStopCameras&, std::vector<float>&, int&, int&)>;
+void engine_set_void_stop_provider(VoidStopProvider provider);
 
 void set_camera_params(
     int width,

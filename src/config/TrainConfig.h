@@ -163,6 +163,7 @@ inline bool train_choices_free_form(const char* choices) {
     X(float, roi_outside_opacity_decay, 1.0f, "dataset", "advanced", "")     \
     X(int, roi_splat_samples, 4, "dataset", "advanced", "")                  \
     X(bool, roi_mask_pixels, true, "dataset", "advanced", "")                \
+    X(bool, roi_void_stop, false, "dataset", "advanced", "")                 \
     X(float, train_resolution_divisor, 0.0f, "dataset", "basic", "")         \
     X(std::string, downscale_rounding_mode, "floor", "dataset", "advanced", "floor|ceil|round") \
     X(bool, progressive_resolution, false, "dataset", "basic", "")           \

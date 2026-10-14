@@ -3877,6 +3877,66 @@ SS_MSG(roi_outside_opacity_decay_help,
     TR("Her yoğunlaştırma adımında ilgi bölgesi dışındaki splat'ler opaklıklarının "
        "bu payını korur. Görüntülerin hâlâ ihtiyaç duyduğu geri kazanır; kalanlar "
        "içeri taşınana dek solar. 1 kapatır."));
+SS_MSG(roi_void_stop,
+    EN("Voids block light"), JA("空洞で光を止める"),
+    ZH_HANS("空洞阻挡光线"), ZH_HANT("空洞阻擋光線"), KO("빈 공간이 빛을 막음"),
+    DE("Hohlräume blockieren Licht"), FR("Les vides bloquent la lumière"),
+    ES("Los huecos bloquean la luz"), PT("Os vazios bloqueiam a luz"),
+    IT("I vuoti bloccano la luce"), NL("Holtes houden licht tegen"),
+    RU("Пустоты задерживают свет"), TR("Boşluklar ışığı keser"));
+SS_MSG(roi_void_stop_help,
+    EN("While training, each camera ray stops where it first enters a void the "
+       "region leaves out, so splats behind the void cannot show through. A shell "
+       "around a void then has to be opaque by itself, and reflections stay on its "
+       "outer surface. For keep-out regions with closed voids; 3dgs and mip only."),
+    JA("学習中、各カメラ光線は領域が除外する空洞に最初に入った所で止まり、空洞の"
+       "奥のスプラットは透けて見えません。空洞を囲む殻はそれ自体で不透明になり、"
+       "反射は外側の表面に残ります。閉じた空洞のある除外領域用。3dgs と mip のみ。"),
+    ZH_HANS("训练时，每条相机光线在首次进入区域排除的空洞处停止，空洞后面的泼溅无法"
+            "透出。包围空洞的外壳必须自身不透明，反射留在外表面。用于带封闭空洞的"
+            "排除区域；仅限 3dgs 和 mip。"),
+    ZH_HANT("訓練時，每條相機光線在首次進入區域排除的空洞處停止，空洞後面的潑濺無法"
+            "透出。包圍空洞的外殼必須自身不透明，反射留在外表面。用於帶封閉空洞的"
+            "排除區域；僅限 3dgs 和 mip。"),
+    KO("학습 중 각 카메라 광선은 영역이 제외한 빈 공간에 처음 들어가는 곳에서 멈추므로 "
+       "그 뒤의 스플랫이 비쳐 보이지 않습니다. 빈 공간을 둘러싼 껍질은 스스로 불투명해야 "
+       "하고 반사는 바깥 표면에 남습니다. 닫힌 빈 공간이 있는 제외 영역용, 3dgs와 mip만."),
+    DE("Beim Training endet jeder Kamerastrahl dort, wo er zuerst in einen vom "
+       "Bereich ausgelassenen Hohlraum eintritt, sodass Splats dahinter nicht "
+       "durchscheinen. Eine Hülle um den Hohlraum muss dann selbst deckend sein, und "
+       "Spiegelungen bleiben außen. Für Ausschlussbereiche mit geschlossenen "
+       "Hohlräumen; nur 3dgs und mip."),
+    FR("Pendant l'entraînement, chaque rayon s'arrête là où il entre dans un vide "
+       "exclu par la région : les splats derrière ne transparaissent plus. La coque "
+       "autour du vide doit alors être opaque d'elle-même et les reflets restent sur "
+       "sa surface extérieure. Pour les régions d'exclusion à vides fermés ; 3dgs et "
+       "mip seulement."),
+    ES("Al entrenar, cada rayo de cámara se detiene donde entra por primera vez en un "
+       "hueco que la región excluye, así los splats de detrás no se transparentan. La "
+       "cáscara alrededor del hueco debe ser opaca por sí misma y los reflejos quedan "
+       "en su superficie exterior. Para regiones de exclusión con huecos cerrados; "
+       "solo 3dgs y mip."),
+    PT("Durante o treino, cada raio de câmara para onde entra pela primeira vez num "
+       "vazio que a região exclui, pelo que os splats atrás não transparecem. A casca "
+       "à volta do vazio tem de ser opaca por si só e os reflexos ficam na superfície "
+       "exterior. Para regiões de exclusão com vazios fechados; só 3dgs e mip."),
+    IT("Durante l'addestramento ogni raggio si ferma dove entra per la prima volta in "
+       "un vuoto escluso dalla regione, così gli splat dietro non traspaiono. Il "
+       "guscio attorno al vuoto deve essere opaco da solo e i riflessi restano sulla "
+       "superficie esterna. Per regioni di esclusione con vuoti chiusi; solo 3dgs e mip."),
+    NL("Tijdens het trainen stopt elke camerastraal waar hij voor het eerst een holte "
+       "binnengaat die het gebied uitsluit, zodat splats erachter niet doorschijnen. "
+       "De schil rond de holte moet dan zelf dekkend zijn en reflecties blijven aan de "
+       "buitenkant. Voor uitsluitgebieden met gesloten holtes; alleen 3dgs en mip."),
+    RU("При обучении каждый луч камеры останавливается там, где впервые входит в "
+       "исключённую областью пустоту, и сплаты за ней не просвечивают. Оболочка "
+       "вокруг пустоты должна быть непрозрачной сама, а отражения остаются на её "
+       "внешней поверхности. Для областей исключения с замкнутыми пустотами; только "
+       "3dgs и mip."),
+    TR("Eğitimde her kamera ışını, bölgenin dışarıda bıraktığı bir boşluğa ilk girdiği "
+       "yerde durur; böylece arkadaki splat'ler görünmez. Boşluğu saran kabuk kendi "
+       "başına opak olmalı, yansımalar dış yüzeyde kalır. Kapalı boşluklu dışlama "
+       "bölgeleri için; yalnızca 3dgs ve mip."));
 SS_MSG(roi_outside_weight_help,
     EN("What a splat outside the region of interest counts for when "
        "densification picks where to relocate or add splats, relative to 1 "

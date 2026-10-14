@@ -273,6 +273,7 @@ public:
     // Reads --roi-region into `roi`, writing back the file it picked.
     void load_region();
     void setup_region();
+    void setup_void_stop();
 
     // Create the output dir, dump config.json, reset + seed the engine,
     // set up the DataManager and bilagrid/PPISP. Requires load_dataset().
