@@ -673,6 +673,11 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.ppisp.run_before_color_space = c.apply_ppisp_before_color_space;
 
     // ---- background ----------------------------------------------------
+    {
+        // Voids show noise whatever the background, warmed up the same way.
+        float rw = std::min((float)step / std::max(c.background_noise_warmup, 1), 1.0f);
+        cfg.background.void_noise_weight = 1.0f - (1.0f - c.background_noise_pre_warmup) * (1.0f - rw);
+    }
     if (c.background_mode == "noise" || c.background_mode == "pseudorandom" ||
         c.background_mode == "random") {
         float rw = std::min((float)step / std::max(c.background_noise_warmup, 1), 1.0f);

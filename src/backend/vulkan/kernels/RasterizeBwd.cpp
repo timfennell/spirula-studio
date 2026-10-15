@@ -10,6 +10,7 @@
 #include <kernels/raster/RasterizationBwd.cuh>
 #include <kernels/raster/RasterizationEval3DBwd.cuh>
 
+#include "backend/api/VoidStop.h"
 #include "backend/vulkan/kernels/KernelCommon.h"
 
 #include <optional>
@@ -29,8 +30,10 @@ struct Raster2dBwdParams {
     uint32_t I, N, n_isects, width, height, tile_width, tile_height, macro_log2;
     float v_dist_rgb_per_depth;
     uint32_t state_flags;
+    uint64_t void_buf;
+    uint32_t void_w, void_h;
 };
-static_assert(sizeof(Raster2dBwdParams) == 20 * 8 + 10 * 4,
+static_assert(sizeof(Raster2dBwdParams) == 21 * 8 + 12 * 4,
               "params layout must match the slang struct");
 
 // Mirrors Raster3dgutBwdParams.
@@ -190,6 +193,13 @@ std::tuple<
         p.tile_width = tile_width;
         p.tile_height = tile_height;
         p.macro_log2 = (uint32_t)macro_log2;
+        // One shot: the training forward's voids, for this backward only.
+        const backend::VoidStop vs = backend::void_stop_bwd();
+        backend::void_stop_bwd() = {};
+        const bool void_on = vs.depth != 0 && vs.width > 0 && vs.height > 0;
+        p.void_buf = void_on ? vs.depth : vkk::or_fallback(uint64_t{0});
+        p.void_w = void_on ? vs.width : 0u;
+        p.void_h = void_on ? vs.height : 0u;
 
         // Spec IDs: cam(0, unused), dist(1), median(2), accum(3),
         // viewmat(4, unused), packed(5).

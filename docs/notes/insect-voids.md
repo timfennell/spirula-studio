@@ -62,8 +62,9 @@ far wall, seen through the near one. Cut the model in half and look at one
 wall face-on, and the background shows through it.
 
 `--roi-void-stop 1` ("Voids block light", default on in the panel) closes
-that. Before each training forward, every camera ray stops where it first
-enters a void:
+that by treating every void as an opaque wall that shows noise. Before each
+training forward, every camera ray stops where it first enters a void, and the
+light left there lands on a random colour:
 
 - `data/RegionRaycast.h` casts the batch's cameras against the region on the
   CPU: clip to the voids' bounding box (`region_void_bounds`, from the CSG
@@ -71,18 +72,34 @@ enters a void:
   void. Lens distortion (OpenCV, thin prism) is undone per pixel. The map is
   512 px on its long side and is cached per camera pose, so after the first
   epoch it costs nothing.
-- The engine uploads it (`fwd.void_depth`) and arms
-  `backend::void_stop()` (`backend/api/VoidStop.h`) for that one forward; the
-  Vulkan 2D raster (`rasterize_fwd_2d`, spec constant `kVoidStop`) ends a
-  pixel's ray at the first splat whose depth is past the void.
-- The backward needs no change: it replays each pixel from the forward's
-  `last_ids`, which already stop short of the void.
-- Light that gets through the near wall now meets the (random) background
-  instead of the far wall, so the alpha loss makes the near wall opaque by
-  itself, and the highlight has to live on its outer surface as SH.
+- The engine uploads one buffer per step (`fwd.void_depth`; layout in
+  `shaders/void_noise.slang`): the step's seed and noise strength, the maps,
+  and room for the light left at each void pixel. It arms
+  `backend::void_stop()` (`backend/api/VoidStop.h`) for that one forward.
+- The Vulkan 2D raster (`rasterize_fwd_2d`, spec constant `kVoidStop`) ends a
+  pixel's ray at the first splat whose depth is past the void, adds the light
+  left times the void's colour, stores that light in the buffer, and reports
+  the pixel as covered, so the background never shows through a void.
+- The void's colour is a cube corner (each channel 0 or 1) per 64 px cell,
+  with the grid shifted every step, so no splat can learn it. It fades in from
+  grey with the same warm-up as Spirula's random backgrounds
+  (`--background-noise-warmup`, `--background-noise-pre-warmup`), so splats
+  are not washed away at the start. It works whatever `--background-mode` is.
+- The loss backward arms `backend::void_stop_bwd()`. For void pixels, the
+  raster backward (`rasterize_bwd_2d`) starts from the stored light, takes its
+  gradient from the void's colour, and removes that colour from the composite
+  before rebuilding the distortion moments. Other pixels are unchanged, and
+  each pixel replays from `last_ids`, which already stops short of the void.
 
-Previews, the viewer and exports never see the stop: the training step arms it
-immediately before its own forward and the forward disarms it.
+The near wall alone now decides what a camera sees there. Light it lets
+through is noise that costs loss every step, so the wall has to become opaque
+by itself, and the highlight has to live on its outer surface as SH. This is
+the idea behind Noise Guided Splatting (El Hakie et al., NeurIPS 2025), which
+fills an object's convex hull with random-colour Gaussians; drawn voids
+follow concave bodies, and a ray cut-off needs no extra splats.
+
+Previews, the viewer and exports never see any of this: the training step arms
+it immediately before its own forward and backward, and each disarms it.
 
 Limits: the Vulkan backend and the 2D primitives (3dgs, mip) only -- the
 trainer logs why and carries on without it otherwise; pinhole cameras (the
