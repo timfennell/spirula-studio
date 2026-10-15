@@ -10,7 +10,9 @@
 #include "engine/EngineState.h"
 #include "shaders/screen_layout.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -148,11 +150,12 @@ void engine_set_void_stop_provider(VoidStopProvider provider) {
     _void_stop_provider() = std::move(provider);
 }
 
-// Asks the provider for this batch's void depths and uploads them; forward_3dgs
-// hands them to the raster and clears them, so only this forward stops rays.
-static void _prepare_void_stop() {
+// Asks the provider for this batch's void depths and uploads them with the
+// step's seed (layout: shaders/void_noise.slang); forward_3dgs hands them to
+// the raster, and the loss backward to the raster backward.
+static void _prepare_void_stop(int step, float strength) {
     auto& fwd = engine().fwd;
-    fwd.void_w = fwd.void_h = 0;
+    fwd.void_armed = false;
     const VoidStopProvider& prov = _void_stop_provider();
     const CameraTable& cam = engine().camera;
     if (!prov || cam.num <= 0) return;
@@ -177,11 +180,18 @@ static void _prepare_void_stop() {
     std::vector<float> map;
     int mw = 0, mh = 0;
     if (!prov(c, map, mw, mh) || mw <= 0 || mh <= 0 || map.size() != n * mw * mh) return;
-    fwd.void_depth.resize(PoolSlot::RenderVoidDepth, (int64_t)map.size());
-    backend::memcpy_sync(fwd.void_depth.data_ptr(), map.data(), map.size() * sizeof(float),
+    const size_t light = n * (size_t)cam.width * (size_t)cam.height;
+    fwd.void_depth.resize(PoolSlot::RenderVoidDepth, (int64_t)(2 + map.size() + light));
+    const uint32_t seed = (uint32_t)step * 0x9e3779b9u + 0x7f4a7c15u;
+    float head[2] = {0.0f, std::clamp(strength, 0.0f, 1.0f)};
+    std::memcpy(&head[0], &seed, sizeof seed);
+    backend::memcpy_sync(fwd.void_depth.data_ptr(), head, sizeof head,
+                         backend::MemcpyKind::HostToDevice);
+    backend::memcpy_sync(fwd.void_depth.data_ptr() + 2, map.data(), map.size() * sizeof(float),
                          backend::MemcpyKind::HostToDevice);
     fwd.void_w = (uint32_t)mw;
     fwd.void_h = (uint32_t)mh;
+    fwd.void_armed = true;
 }
 
 static std::map<std::string, float> _engine_step_fwd_bwd_only(
@@ -263,7 +273,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
 
     {
         SplatStageTimer stage_timer;
-        _prepare_void_stop();
+        _prepare_void_stop(step, cfg.background.void_noise_weight);
         forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false, (int)dist_type);
     }
     _engine_step_image_stages(bilagrid_cam_indices);

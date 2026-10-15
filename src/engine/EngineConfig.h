@@ -305,6 +305,7 @@ struct BackgroundStepConfig {
     float    lr_dc           = 0.0f;
     float    lr_sh           = 0.0f;
     float    randomize_weight = 0.0f;
+    float    void_noise_weight = 1.0f;   // void colour strength (VoidStop.h), ramped like the noise
     uint32_t seed             = 0;
     bool     match_luminance  = false;   // randomized draw ^ per-image power
 };

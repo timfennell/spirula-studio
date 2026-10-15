@@ -1,5 +1,6 @@
 // Engine loss + combined backward pass.
 
+#include "backend/api/VoidStop.h"
 #include "engine/Engine.h"
 #include "engine/EngineCommon.h"
 #include "engine/EngineInternal.h"
@@ -224,6 +225,10 @@ static void _engine_raster_proj_backward(
 
     std::vector<DeviceTensorFloatND> v_splats_w_out, v_splats_s_out;
 
+    // The training forward's voids, for its backward only.
+    if (engine().fwd.void_active)
+        backend::void_stop_bwd() = {(uint64_t)engine().fwd.void_depth.data_ptr(),
+                                    engine().fwd.void_w, engine().fwd.void_h};
     if (engine().primitive == "3dgs" || engine().primitive == "mip") {
         auto [vw, vs, accum_weight] = rasterize_to_pixels_3dgs_bwd(
             engine().cur_num_splats,

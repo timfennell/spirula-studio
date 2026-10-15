@@ -31,6 +31,7 @@
 
 #include "raster_common.slang"
 #include "dist_spec.slang"
+#include "void_noise.slang"
 
 [SpecializationConstant]
 const int kCameraModel = 0;
@@ -79,7 +80,7 @@ struct RasterFwd2dParams {
     float* dist_rgb;     // [I,H,W,3], kDistType == 2 only
     float* dist_depth;   // [I,H,W],   kDistType != 0 only
     float* out_median;   // [I,H,W],   kOutputMedian only
-    float* void_depth;   // [I,void_h,void_w], kVoidStop only
+    float* void_depth;   // void_noise.slang layout, kVoidStop only
     uint32_t I;
     uint32_t n_isects;
     uint32_t width;
@@ -125,11 +126,9 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // Voids block light: the ray ends where it enters a void, so splats
     // behind it (the far wall) cannot cover for a see-through near wall.
     float void_z = 3.0e38f;
-    if (kVoidStop != 0 && inside) {
-        uint vx = min(j * p.void_w / p.width, p.void_w - 1);
-        uint vy = min(i * p.void_h / p.height, p.void_h - 1);
-        void_z = p.void_depth[(image_id * p.void_h + vy) * p.void_w + vx];
-    }
+    if (kVoidStop != 0 && inside)
+        void_z = p.void_depth[void_map_index(image_id, p.void_w, p.void_h, j, i,
+                                             p.width, p.height)];
 
     // C = sum_j w_j c_j (raw) and S = sum_j w_j c_j^2 (RGB_D channels)
     float3 pix_rgb = float3(0.0f);
@@ -269,7 +268,13 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     }
 
     if (i < p.height && j < p.width) {
-        p.out_T[pix_id_global] = T;
+        // A void is opaque and shows noise: the light left at it lands on the
+        // void's colour, and the background sees the pixel covered. The
+        // backward reads that light back from the void buffer.
+        const bool void_hit = kVoidStop != 0 && void_z < 1.0e38f;
+        p.out_T[pix_id_global] = void_hit ? 0.0f : T;
+        if (void_hit)
+            p.void_depth[void_light_index(p.I, p.void_w, p.void_h, pix_id_global)] = T;
         if (kOutputMedian != 0)
             p.out_median[pix_id_global] = median_depth;
         // distortion: closed form D = W*S - C^2, evaluated before the depth
@@ -288,6 +293,8 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float invW = 1.0f / max(1.0f - T, 1e-10f);
         float out_depth = (kDistType != 0) ? exp(pix_depth * invW)
                                            : pix_depth * invW;
+        if (void_hit)
+            pix_rgb += T * void_noise_color(p.void_depth, image_id, j, i);
         p.out_rgb[3 * pix_id_global + 0] = pix_rgb.x;
         p.out_rgb[3 * pix_id_global + 1] = pix_rgb.y;
         p.out_rgb[3 * pix_id_global + 2] = pix_rgb.z;

@@ -19,6 +19,7 @@
 #include "screen.slang"
 #include "atomic_float.slang"
 #include "dist_spec.slang"
+#include "void_noise.slang"
 
 [SpecializationConstant]
 const int kCameraModel = 0;   // CameraModelType; 3dgut entry only
@@ -97,15 +98,20 @@ void _rb_load_pixel_state(
     float* out_rgb, float* out_depth, float* dist_rgb, float* dist_depth,
     float* v_out_rgb, float* v_out_depth, float* v_dist_rgb,
     float* v_dist_depth, float* awmap, float* v_median, uint state_flags,
-    float v_dist_rgb_per_depth) {
-    float T = inside ? render_Ts_img[gpix] : 0.0f;
-    float v_T = inside ? v_render_Ts_img[gpix] : 0.0f;
+    float v_dist_rgb_per_depth, float T_void = -1.0f,
+    float3 void_c = float3(0.0f)) {
+    // A pixel whose ray reached a void (T_void >= 0) was reported covered;
+    // its real leftover light lit the void's colour (rasterize_fwd_2d).
+    const bool at_void = inside && T_void >= 0.0f;
+    float T = at_void ? T_void : (inside ? render_Ts_img[gpix] : 0.0f);
+    float v_T = (inside && !at_void) ? v_render_Ts_img[gpix] : 0.0f;
     float4 v_c = float4(0.0f);
     if (inside) {
         v_c = float4(v_out_rgb[3 * image_pix], v_out_rgb[3 * image_pix + 1],
                      v_out_rgb[3 * image_pix + 2],
                      (state_flags & kRbDepthBound) != 0 ? v_out_depth[image_pix] : 0.0f);
     }
+    if (at_void) v_T += dot(v_c.xyz, void_c);
     // depth channel: convert dL/d(render depth) to dL/d(accumulated C).
     {
         float inv_alpha = 1.0f / max(1.0f - T, 1e-10f);
@@ -130,6 +136,7 @@ void _rb_load_pixel_state(
         if (inside) {
             C = float4(out_rgb[3 * image_pix], out_rgb[3 * image_pix + 1],
                        out_rgb[3 * image_pix + 2], out_depth[image_pix]);
+            if (at_void) C.xyz -= T * void_c;
             Dv.w = dist_depth[image_pix];
             v_d.w = v_dist_depth[image_pix];
             if (kDistType == 2) {
@@ -261,6 +268,9 @@ struct Raster2dBwdParams {  // via params ring
     uint32_t macro_log2;
     float v_dist_rgb_per_depth;
     uint32_t state_flags;  // kRb*
+    float* void_buf;       // void_noise.slang layout; read when void_w != 0
+    uint32_t void_w;
+    uint32_t void_h;
 };
 
 struct Frag2d_ {
@@ -366,12 +376,20 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         int bin = inside ? p.last_ids[img_off + gpix] : -1;
         _rb_bin[pix] = bin;
         bin_local = max(bin_local, bin);
+        float T_void = -1.0f;
+        float3 void_c = float3(0.0f);
+        if (p.void_w != 0u && inside &&
+            p.void_buf[void_map_index(image_id, p.void_w, p.void_h, uint(gx), uint(gy),
+                                      p.width, p.height)] < 1.0e38f) {
+            T_void = p.void_buf[void_light_index(p.I, p.void_w, p.void_h, img_off + gpix)];
+            void_c = void_noise_color(p.void_buf, image_id, uint(gx), uint(gy));
+        }
         _rb_load_pixel_state(
             pix, inside, img_off + gpix, p.render_Ts + img_off,
             p.v_render_Ts + img_off, gpix, p.out_rgb, p.out_depth,
             p.dist_rgb, p.dist_depth, p.v_out_rgb, p.v_out_depth,
             p.v_dist_rgb, p.v_dist_depth, p.awmap, p.v_median,
-            p.state_flags, p.v_dist_rgb_per_depth);
+            p.state_flags, p.v_dist_rgb_per_depth, T_void, void_c);
     }
     { uint prev; InterlockedMax(_rb_binmax, uint(bin_local + 1), prev); }
     GroupMemoryBarrierWithGroupSync();
